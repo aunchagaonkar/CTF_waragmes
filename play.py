@@ -23,7 +23,7 @@ sem = Semaphore(2)
 levels_pulled = 0
 loading_done = False
 
-BACKEND_URL = "http://localhost:3000"  # Change if deployed elsewhere
+BACKEND_URL = "https://ctf-backend-1ly6.onrender.com"  # Change if deployed elsewhere
 HARDCODED_USER_ID = "Alex1203"
 
 def check_internet():
@@ -222,6 +222,9 @@ def interactive_level_shell(level_name, level_num):
     print_section_header(f"Welcome {HARDCODED_USER_ID}, to CTF Level {level_num}")
     print(f"{GREEN}{BOLD}Submit the flag using 'submit FLAG{{...}}' below.{RESET}")
     print(f"{GREEN}{BOLD}Type 'attach' to open your Docker shell. Type 'exit' to quit this level session.{RESET}")
+    # print(f"{GREEN}{BOLD}Type 'attach' to open your Docker shell. Type 'restart' to reset and start from level 1. Type 'exit' to quit this level session.{RESET}")
+    
+
 
     while True:
         try:
@@ -242,11 +245,25 @@ def interactive_level_shell(level_name, level_num):
         elif user_input.lower() == "attach":
             attach_command = f"docker start {level_name} > /dev/null 2>&1 && docker exec -it {level_name} bash"
             os.system(attach_command)
+        elif user_input.lower() == "restart":
+            # Call your backend's reset endpoint to reset progress to level 1
+            import requests
+            try:
+                resp = requests.post(f"{BACKEND_URL}/resetUser")
+                if resp.status_code == 200:
+                    print(f"{YELLOW}{BOLD}Progress reset to level 1! Restarting session...{RESET}")
+                    # Optionally stop and remove all running containers for this user
+                    subprocess.call(f"docker rm -f {level_name} > /dev/null 2>&1", shell=True)
+                    return 1  # Restart from level 1
+                else:
+                    print(f"{RED}Failed to reset progress. Backend error.{RESET}")
+            except Exception as e:
+                print(f"{RED}Failed to reset progress: {e}{RESET}")
         elif user_input.lower() == "exit":
             print("Exiting current level session.")
             return level_num
         else:
-            print("Unknown command. Use 'submit FLAG{...}', 'attach', or 'exit'.")
+            print("Unknown command. Use 'submit FLAG{{...}}', 'attach', 'restart', or 'exit'.")
 
 def main():
     global total_levels
