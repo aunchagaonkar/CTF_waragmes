@@ -24,6 +24,7 @@ levels_pulled = 0
 loading_done = False
 
 BACKEND_URL = "http://localhost:3000"
+BACKEND_URL = "https://ctf-backend-5yhk.onrender.com"
 
 def get_username():
     """Get or prompt for username, save in ~/.ctf_user"""
