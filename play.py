@@ -23,8 +23,23 @@ sem = Semaphore(2)
 levels_pulled = 0
 loading_done = False
 
-BACKEND_URL = "https://ctf-backend-1ly6.onrender.com"  # Change if deployed elsewhere
-HARDCODED_USER_ID = "Alex1203"
+BACKEND_URL = "http://localhost:3000"
+
+def get_username():
+    """Get or prompt for username, save in ~/.ctf_user"""
+    if os.path.isfile(user_file_path):
+        with open(user_file_path, "r") as f:
+            username = f.read().strip()
+            if username:
+                print(f"{BOLD}{YELLOW}Welcome back, {username}!{RESET}")
+                return username
+    username = ""
+    while not username:
+        username = input(f"{BOLD}{MAGENTA}Enter your CTF username: {RESET}").strip()
+    with open(user_file_path, "w") as f:
+        f.write(username)
+    print(f"{BOLD}{YELLOW}Your username is set to {username}.{RESET}")
+    return username
 
 def check_internet():
     try:
@@ -174,10 +189,10 @@ def check_file():
         return False
     return False
 
-def get_current_level():
-    """Fetch the current level from backend for the hardcoded user."""
+def get_current_level(user_id):
+    """Fetch the current level from backend for the specific user."""
     try:
-        resp = requests.get(f"{BACKEND_URL}/getLevel")
+        resp = requests.get(f"{BACKEND_URL}/getLevel", params={"userId": user_id})
         if resp.status_code == 200:
             return resp.json().get("level", 1)
     except Exception as e:
@@ -189,10 +204,10 @@ def print_section_header(title):
     print(f"{BOLD}{MAGENTA}│ {title}{RESET}{BOLD}{MAGENTA}{' ' * (38 - len(title) - 1)}│{RESET}")
     print(f"{BOLD}{MAGENTA}└──────────────────────────────────────┘{RESET}")
 
-def submit_flag(flag):
-    """Submit flag to backend for the hardcoded user."""
+def submit_flag(flag, user_id):
+    """Submit flag to backend for the specific user."""
     try:
-        resp = requests.post(f"{BACKEND_URL}/checkFlag", json={"flag": flag})
+        resp = requests.post(f"{BACKEND_URL}/checkFlag", json={"flag": flag, "userId": user_id})
         if resp.status_code == 200:
             result = resp.json()
             return result['correct'], result['newLevel']
@@ -203,7 +218,37 @@ def submit_flag(flag):
         print(f"Could not connect to backend: {e}")
         return False, None
 
-def interactive_level_shell(level_name, level_num):
+def reset_user(user_id):
+    """Reset user progress."""
+    try:
+        resp = requests.post(f"{BACKEND_URL}/resetUser", json={"userId": user_id})
+        if resp.status_code == 200:
+            print(f"{YELLOW}{BOLD}Progress reset to level 1!{RESET}")
+            return True
+        else:
+            print(f"{RED}Failed to reset progress. Backend error.{RESET}")
+            return False
+    except Exception as e:
+        print(f"{RED}Failed to reset progress: {e}{RESET}")
+        return False
+
+def delete_user(user_id):
+    """Delete user from backend and remove local file."""
+    try:
+        resp = requests.post(f"{BACKEND_URL}/deleteUser", json={"userId": user_id})
+        if resp.status_code == 200 and resp.json().get("deleted"):
+            print(f"{RED}{BOLD}User '{user_id}' deleted! Exiting...{RESET}")
+            if os.path.isfile(user_file_path):
+                os.remove(user_file_path)
+            return True
+        else:
+            print("Error deleting user. Backend error.")
+            return False
+    except Exception as e:
+        print(f"Could not connect to backend: {e}")
+        return False
+
+def interactive_level_shell(level_name, level_num, user_id):
     # Start docker container if not already running
     check_container = f"docker ps -a --format '{{{{.Names}}}}' | grep -w {level_name} > /dev/null 2>&1"
     container_exists = subprocess.call(check_container, shell=True)
@@ -211,20 +256,17 @@ def interactive_level_shell(level_name, level_num):
     docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
     if container_exists != 0:
         level_string = (
-            f"docker run -dit --hostname {HARDCODED_USER_ID} --user root --name {level_name} "
+            f"docker run -dit --hostname {user_id} --user root --name {level_name} "
             f"{docker_image} /bin/bash > /dev/null 2>&1"
-
         )
         exit_code = subprocess.call(level_string, shell=True)
         if exit_code != 0:
             print("Failed to start container. Exiting...")
             return False
-    print_section_header(f"Welcome {HARDCODED_USER_ID}, to CTF Level {level_num}")
+    print_section_header(f"Welcome {user_id}, to CTF Level {level_num}")
     print(f"{GREEN}{BOLD}Submit the flag using 'submit FLAG{{...}}' below.{RESET}")
     print(f"{GREEN}{BOLD}Type 'attach' to open your Docker shell. Type 'exit' to quit this level session.{RESET}")
-    # print(f"{GREEN}{BOLD}Type 'attach' to open your Docker shell. Type 'restart' to reset and start from level 1. Type 'exit' to quit this level session.{RESET}")
-    
-
+    # print(f"{YELLOW}{BOLD}Type 'delete' to delete your CTF account and exit permanently.{RESET}")
 
     while True:
         try:
@@ -233,7 +275,7 @@ def interactive_level_shell(level_name, level_num):
             break
         if user_input.lower().startswith("submit "):
             flag = user_input[7:].strip()
-            correct, new_level = submit_flag(flag)
+            correct, new_level = submit_flag(flag, user_id)
             if correct:
                 print(f"{GREEN}{BOLD}Correct flag! Level up!{RESET}")
                 # Remove container
@@ -246,24 +288,19 @@ def interactive_level_shell(level_name, level_num):
             attach_command = f"docker start {level_name} > /dev/null 2>&1 && docker exec -it {level_name} bash"
             os.system(attach_command)
         elif user_input.lower() == "restart":
-            # Call your backend's reset endpoint to reset progress to level 1
-            import requests
-            try:
-                resp = requests.post(f"{BACKEND_URL}/resetUser")
-                if resp.status_code == 200:
-                    print(f"{YELLOW}{BOLD}Progress reset to level 1! Restarting session...{RESET}")
-                    # Optionally stop and remove all running containers for this user
-                    subprocess.call(f"docker rm -f {level_name} > /dev/null 2>&1", shell=True)
-                    return 1  # Restart from level 1
-                else:
-                    print(f"{RED}Failed to reset progress. Backend error.{RESET}")
-            except Exception as e:
-                print(f"{RED}Failed to reset progress: {e}{RESET}")
+            if reset_user(user_id):
+                subprocess.call(f"docker rm -f {level_name} > /dev/null 2>&1", shell=True)
+                return 1  # Restart from level 1
+        elif user_input.lower() == "delete":
+            if delete_user(user_id):
+                sys.exit(0)
+            else:
+                print(f"{RED}Failed to delete user. Try again or contact support.{RESET}")
         elif user_input.lower() == "exit":
             print("Exiting current level session.")
             return level_num
         else:
-            print("Unknown command. Use 'submit FLAG{{...}}', 'attach', 'restart', or 'exit'.")
+            print("Unknown command. Use 'submit FLAG{{...}}', 'attach', 'restart', 'delete', or 'exit'.")
 
 def main():
     global total_levels
@@ -274,24 +311,34 @@ def main():
     if not check_file():
         if setup() == 1:
             return
-    print(f"{GREEN}{BOLD}Welcome, {HARDCODED_USER_ID}! Preparing your game session...{RESET}")
-    current_level = get_current_level()
+    user_id = get_username()
+    print(f"{GREEN}{BOLD}Welcome, {user_id}! Preparing your game session...{RESET}")
+    current_level = get_current_level(user_id)
     if current_level == -1:
         print(f"{BOLD}Either the backend is down or there is issue in the database{RESET}")
         return
     while current_level <= total_levels:
         os.system("clear")
         level_name = f"ctf{current_level}"
-        new_level = interactive_level_shell(level_name, current_level)
+        new_level = interactive_level_shell(level_name, current_level, user_id)
         if new_level is None:
             break
         if new_level > current_level:
             current_level = new_level
         else:
             break
-    print(f"{BOLD}{GREEN}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
-    print(f"{BOLD}{GREEN}  🎉 Congratulations! You completed the CTF! 🎉{RESET}")
-    print(f"{BOLD}{GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+    # Only print congratulations if actually completed all levels
+    if current_level > total_levels:
+        print(f"{BOLD}{GREEN}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+        print(f"{BOLD}{GREEN}  🎉 Congratulations! You completed the CTF! 🎉{RESET}")
+        print(f"{BOLD}{GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+
+    else:
+        print(f"{BOLD}{GREEN}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+        print(f"{BOLD}{GREEN}                    Try Again                    {RESET}")
+        print(f"{BOLD}{GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
+
+    # print(f"File path: {user_file_path}")
 
 if __name__ == "__main__":
     main()
