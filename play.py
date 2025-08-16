@@ -23,7 +23,7 @@ sem = Semaphore(2)
 levels_pulled = 0
 loading_done = False
 
-BACKEND_URL = "http://localhost:3000"
+# BACKEND_URL = "http://localhost:3000"
 BACKEND_URL = "https://ctf-backend-5yhk.onrender.com"
 
 def get_username():
@@ -266,7 +266,7 @@ def interactive_level_shell(level_name, level_num, user_id):
             return False
     print_section_header(f"Welcome {user_id}, to CTF Level {level_num}")
     print(f"{GREEN}{BOLD}Submit the flag using 'submit FLAG{{...}}' below.{RESET}")
-    print(f"{GREEN}{BOLD}Type 'attach' to open your Docker shell. Type 'exit' to quit this level session.{RESET}")
+    print(f"{GREEN}{BOLD}Type 'play' to open your Docker shell. Type 'exit' to quit this level session.{RESET}")
     # print(f"{YELLOW}{BOLD}Type 'delete' to delete your CTF account and exit permanently.{RESET}")
 
     while True:
@@ -285,7 +285,7 @@ def interactive_level_shell(level_name, level_num, user_id):
                 return new_level
             else:
                 print(f"{RED}{BOLD}Incorrect flag. Try again.{RESET}")
-        elif user_input.lower() == "attach":
+        elif user_input.lower() == "play":
             attach_command = f"docker start {level_name} > /dev/null 2>&1 && docker exec -it {level_name} bash"
             os.system(attach_command)
         elif user_input.lower() == "restart":
