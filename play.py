@@ -336,12 +336,6 @@ def main():
         print("User reset is disabled in this version.")
         return
     
-    user_id = get_username()
-    print(f"{GREEN}{BOLD}Welcome, {user_id}! Preparing your game session...{RESET}")
-    current_level = get_current_level(user_id)
-    if current_level == -1:
-        print(f"{BOLD}Either the backend is down or there is issue in the database{RESET}")
-        return
     
     if not check_file():
         if setup(current_level) == 1:
@@ -363,6 +357,13 @@ def main():
         if current_level + 1 <= total_levels:
             pull_next_level_async(current_level + 1)
     
+    user_id = get_username()
+    print(f"{GREEN}{BOLD}Welcome, {user_id}! Preparing your game session...{RESET}")
+    current_level = get_current_level(user_id)
+    if current_level == -1:
+        print(f"{BOLD}Either the backend is down or there is issue in the database{RESET}")
+        return
+        
     while current_level <= total_levels:
         os.system("clear")
         level_name = f"ctf{current_level}"
