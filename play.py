@@ -321,7 +321,7 @@ def interactive_level_shell(level_name, level_num, user_id):
             else:
                 print(f"{RED}{BOLD}Incorrect flag. Try again.{RESET}")
         elif user_input.lower() == "play":
-            attach_command = f"docker start {level_name} > ./log.txt && docker exec -it {level_name} sh"
+            attach_command = f"docker start {level_name} > /dev/null 2>&1 && docker exec -it {level_name} sh"
             os.system(attach_command)
         elif user_input.lower() == "exit":
             print("Exiting current level session.")
