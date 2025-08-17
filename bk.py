@@ -123,7 +123,7 @@ def loader_animation():
         print(f"\r[{bar}] {progress:.1f}% {spinner[i%4]} ({levels_pulled}/2) ", end="", flush=True)
         i += 1
         time.sleep(0.2)
-    print("\rLevels pulled successfully!")
+    print("\rInitial levels pulled successfully!")
 
 def pull_level(level, silent=False):
     global levels_pulled
@@ -185,6 +185,10 @@ def pull_next_level_async(level):
 def pull_initial_levels(current_level):
     """Pull current level and next level only with loader animation"""
     global loading_done, levels_pulled
+    if not restart_docker():
+        print("Error restarting Docker. Exiting...")
+        return False
+    
     print("Getting levels...! Patience is the key.")
     loading_done = False
     levels_pulled = 0
@@ -267,6 +271,35 @@ def submit_flag(flag, user_id):
         print(f"Could not connect to backend: {e}")
         return False, None
 
+def reset_user(user_id):
+    """Reset user progress."""
+    try:
+        resp = requests.post(f"{BACKEND_URL}/resetUser", json={"userId": user_id})
+        if resp.status_code == 200:
+            print(f"{YELLOW}{BOLD}Progress reset to level 1!{RESET}")
+            return True
+        else:
+            print(f"{RED}Failed to reset progress. Backend error.{RESET}")
+            return False
+    except Exception as e:
+        print(f"{RED}Failed to reset progress: {e}{RESET}")
+        return False
+
+def delete_user(user_id):
+    """Delete user from backend and remove local file."""
+    try:
+        resp = requests.post(f"{BACKEND_URL}/deleteUser", json={"userId": user_id})
+        if resp.status_code == 200 and resp.json().get("deleted"):
+            print(f"{RED}{BOLD}User '{user_id}' deleted! Exiting...{RESET}")
+            if os.path.isfile(user_file_path):
+                os.remove(user_file_path)
+            return True
+        else:
+            print("Error deleting user. Backend error.")
+            return False
+    except Exception as e:
+        print(f"Could not connect to backend: {e}")
+        return False
 
 def interactive_level_shell(level_name, level_num, user_id):
     # Start docker container if not already running
@@ -343,8 +376,6 @@ def main():
         if setup(current_level) == 1:
             return
     else:
-        if setup(current_level) == 1:
-            return
         # Even if setup was done before, ensure current and next level are available
         print("Checking level availability...")
         # Check current level without affecting levels_pulled counter
