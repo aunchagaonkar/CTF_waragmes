@@ -285,6 +285,11 @@ def interactive_level_shell(level_name, level_num, user_id):
                 f"docker run -dit --privileged --name {level_name} "
                 f"{docker_image} /bin/sh > /dev/null 2>&1" # Maybe bash instead of sh
             )
+        elif level_num == 6:
+            level_string = (
+                f"docker run -dit --hostname {user_id} --name {level_name} "
+                f"{docker_image} > /dev/null 2>&1"
+            )
         else:
             # Default run command
             level_string = (
