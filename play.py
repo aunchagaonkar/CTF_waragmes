@@ -127,8 +127,8 @@ def loader_animation():
 
 def pull_level(level, silent=False):
     global levels_pulled
-    tag = f"warg{level}"
-    docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
+    tag = f"war{level}"
+    docker_image = f"ghcr.io/avadhutmali/linuxdiary6.0-wargames-level:{tag}"
     
     # Check if level is already pulled
     check_image = f"docker images -q {docker_image} 2>/dev/null"
@@ -160,8 +160,8 @@ def pull_next_level_async(level):
     """Pull the next level in background without blocking the main thread"""
     def pull_in_background():
         if level <= total_levels:
-            tag = f"warg{level}"
-            docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
+            tag = f"war{level}"
+            docker_image = f"ghcr.io/avadhutmali/linuxdiary6.0-wargames-level:{tag}"
             
             # Check if level is already pulled
             check_image = f"docker images -q {docker_image} 2>/dev/null"
@@ -272,12 +272,12 @@ def interactive_level_shell(level_name, level_num, user_id):
     # Start docker container if not already running
     check_container = f"docker ps -a --format '{{{{.Names}}}}' | grep -w {level_name} > /dev/null 2>&1"
     container_exists = subprocess.call(check_container, shell=True)
-    tag = f"warg{level_num}"
-    docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
+    tag = f"war{level_num}"
+    docker_image = f"ghcr.io/avadhutmali/linuxdiary6.0-wargames-level:{tag}"
     if container_exists != 0:
         level_string = (
-            f"docker run -dit --hostname {user_id} --user root --name {level_name} "
-            f"{docker_image} /bin/bash > /dev/null 2>&1"
+            f"docker run -dit --hostname {user_id} --name {level_name} "
+            f"{docker_image} /bin/sh > /dev/null 2>&1"
         )
         exit_code = subprocess.call(level_string, shell=True)
         if exit_code != 0:
@@ -308,7 +308,7 @@ def interactive_level_shell(level_name, level_num, user_id):
             else:
                 print(f"{RED}{BOLD}Incorrect flag. Try again.{RESET}")
         elif user_input.lower() == "play":
-            attach_command = f"docker start {level_name} > /dev/null 2>&1 && docker exec -it {level_name} bash"
+            attach_command = f"docker start {level_name} > ./log.txt && docker exec -it {level_name} sh"
             os.system(attach_command)
         elif user_input.lower() == "restart":
             if reset_user(user_id):
@@ -348,8 +348,8 @@ def main():
         # Even if setup was done before, ensure current and next level are available
         print("Checking level availability...")
         # Check current level without affecting levels_pulled counter
-        tag = f"warg{current_level}"
-        docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
+        tag = f"war{current_level}"
+        docker_image = f"ghcr.io/avadhutmali/linuxdiary6.0-wargames-level:{tag}"
         check_image = f"docker images -q {docker_image} 2>/dev/null"
         result = subprocess.run(check_image, shell=True, capture_output=True, text=True)
         if not result.stdout.strip():
