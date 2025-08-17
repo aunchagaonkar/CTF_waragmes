@@ -23,4 +23,4 @@ fi
 
 # Run your command inside venv
 # Change this to the command you want
-python your_script.py
+python play.py

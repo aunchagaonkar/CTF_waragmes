@@ -116,55 +116,107 @@ def loader_animation():
     spinner = ['|', '/', '-', '\\']
     i = 0
     while not loading_done:
-        progress = (levels_pulled / total_levels) * 100
+        progress = (levels_pulled / 2) * 100  
         bar_width = 30
-        pos = int(levels_pulled * bar_width / total_levels)
+        pos = int(levels_pulled * bar_width / 2)
         bar = "#" * pos + "-" * (bar_width - pos)
-        print(f"\r[{bar}] {progress:.1f}% {spinner[i%4]} ({levels_pulled}/{total_levels}) ", end="", flush=True)
+        print(f"\r[{bar}] {progress:.1f}% {spinner[i%4]} ({levels_pulled}/2) ", end="", flush=True)
         i += 1
         time.sleep(0.2)
-    print("\rAll levels pulled successfully!")
+    print("\rLevels pulled successfully!")
 
-def pull_level(level):
+def pull_level(level, silent=False):
     global levels_pulled
     tag = f"warg{level}"
     docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
+    
+    # Check if level is already pulled
+    check_image = f"docker images -q {docker_image} 2>/dev/null"
+    result = subprocess.run(check_image, shell=True, capture_output=True, text=True)
+    if result.stdout.strip():
+        if not silent:
+            print(f"{GREEN}Level {level} already available!{RESET}")
+        levels_pulled += 1  # Increment even if already exists during initial setup
+        return True
+    
+    if not silent:
+        print(f"{YELLOW}Pulling level {level}...{RESET}")
+    
     for attempts in range(3):
         get_level = f"docker pull {docker_image} > /dev/null 2>&1"
         exit_status = subprocess.call(get_level, shell=True)
         if exit_status == 0:
+            if not silent:
+                print(f"{GREEN}Level {level} pulled successfully!{RESET}")
             levels_pulled += 1
             return True
         time.sleep(3)
+    
+    if not silent:
+        print(f"{RED}Failed to pull level {level} after 3 attempts{RESET}")
     return False
 
-def pull_level_thread(level):
-    sem.acquire()
-    pull_level(level)
-    sem.release()
+def pull_next_level_async(level):
+    """Pull the next level in background without blocking the main thread"""
+    def pull_in_background():
+        if level <= total_levels:
+            tag = f"warg{level}"
+            docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
+            
+            # Check if level is already pulled
+            check_image = f"docker images -q {docker_image} 2>/dev/null"
+            result = subprocess.run(check_image, shell=True, capture_output=True, text=True)
+            if result.stdout.strip():
+                return True  # Already available
+            
+            # Pull the level (don't increment levels_pulled counter for background pulls)
+            for attempts in range(3):
+                get_level = f"docker pull {docker_image} > /dev/null 2>&1"
+                exit_status = subprocess.call(get_level, shell=True)
+                if exit_status == 0:
+                    return True
+                time.sleep(3)
+            return False
+    
+    thread = threading.Thread(target=pull_in_background)
+    thread.daemon = True  # Dies when main program exits
+    thread.start()
 
-def pull_levels():
+def pull_initial_levels(current_level):
+    """Pull current level and next level only with loader animation"""
     global loading_done, levels_pulled
     if not restart_docker():
         print("Error restarting Docker. Exiting...")
         return False
+    
     print("Getting levels...! Patience is the key.")
     loading_done = False
     levels_pulled = 0
+    
+    # Start loader animation in background
     loader_thread = threading.Thread(target=loader_animation)
     loader_thread.start()
-    threads = []
-    for i in range(1, total_levels+1):
-        t = threading.Thread(target=pull_level_thread, args=(i,))
-        threads.append(t)
-        t.start()
-    for t in threads:
-        t.join()
+    
+    # Pull current level
+    if not pull_level(current_level, silent=True):
+        loading_done = True
+        loader_thread.join()
+        print(f"{RED}Failed to pull current level {current_level}!{RESET}")
+        return False
+    
+    # Pull next level if it exists
+    if current_level + 1 <= total_levels:
+        if not pull_level(current_level + 1, silent=True):
+            loading_done = True
+            loader_thread.join()
+            print(f"{RED}Failed to pull next level {current_level + 1}!{RESET}")
+            return False
+    
     loading_done = True
     loader_thread.join()
     return True
 
-def setup():
+def setup(current_level=1):
     if not are_you_sudo():
         print(f"{BOLD}{RED}Run the script with sudo!{RESET}")
         return 1
@@ -175,7 +227,7 @@ def setup():
     if not check_and_get_docker():
         print(f"{BOLD}Error getting docker!{RESET}")
         return 1
-    if not pull_levels():
+    if not pull_initial_levels(current_level):
         print(f"{BOLD}Error pulling levels!{RESET}")
         return 1
     os.system("clear")
@@ -219,35 +271,6 @@ def submit_flag(flag, user_id):
         print(f"Could not connect to backend: {e}")
         return False, None
 
-def reset_user(user_id):
-    """Reset user progress."""
-    try:
-        resp = requests.post(f"{BACKEND_URL}/resetUser", json={"userId": user_id})
-        if resp.status_code == 200:
-            print(f"{YELLOW}{BOLD}Progress reset to level 1!{RESET}")
-            return True
-        else:
-            print(f"{RED}Failed to reset progress. Backend error.{RESET}")
-            return False
-    except Exception as e:
-        print(f"{RED}Failed to reset progress: {e}{RESET}")
-        return False
-
-def delete_user(user_id):
-    """Delete user from backend and remove local file."""
-    try:
-        resp = requests.post(f"{BACKEND_URL}/deleteUser", json={"userId": user_id})
-        if resp.status_code == 200 and resp.json().get("deleted"):
-            print(f"{RED}{BOLD}User '{user_id}' deleted! Exiting...{RESET}")
-            if os.path.isfile(user_file_path):
-                os.remove(user_file_path)
-            return True
-        else:
-            print("Error deleting user. Backend error.")
-            return False
-    except Exception as e:
-        print(f"Could not connect to backend: {e}")
-        return False
 
 def interactive_level_shell(level_name, level_num, user_id):
     # Start docker container if not already running
@@ -279,6 +302,9 @@ def interactive_level_shell(level_name, level_num, user_id):
             correct, new_level = submit_flag(flag, user_id)
             if correct:
                 print(f"{GREEN}{BOLD}Correct flag! Level up!{RESET}")
+                # Pull next level in background before removing current container
+                if new_level and new_level + 1 <= total_levels:
+                    pull_next_level_async(new_level + 1)
                 # Remove container
                 remove_container = f"docker rm -f {level_name} > /dev/null 2>&1"
                 subprocess.call(remove_container, shell=True)
@@ -309,15 +335,34 @@ def main():
         print_section_header("Resetting User....")
         print("User reset is disabled in this version.")
         return
-    if not check_file():
-        if setup() == 1:
-            return
+    
     user_id = get_username()
     print(f"{GREEN}{BOLD}Welcome, {user_id}! Preparing your game session...{RESET}")
     current_level = get_current_level(user_id)
     if current_level == -1:
         print(f"{BOLD}Either the backend is down or there is issue in the database{RESET}")
         return
+    
+    if not check_file():
+        if setup(current_level) == 1:
+            return
+    else:
+        # Even if setup was done before, ensure current and next level are available
+        print("Checking level availability...")
+        # Check current level without affecting levels_pulled counter
+        tag = f"warg{current_level}"
+        docker_image = f"ghcr.io/walchand-linux-users-group/wildwarrior44/wargame_finals:{tag}"
+        check_image = f"docker images -q {docker_image} 2>/dev/null"
+        result = subprocess.run(check_image, shell=True, capture_output=True, text=True)
+        if not result.stdout.strip():
+            # Need to pull current level
+            if not pull_level(current_level, silent=True):
+                print(f"{RED}Failed to ensure current level {current_level} is available{RESET}")
+                return
+        
+        if current_level + 1 <= total_levels:
+            pull_next_level_async(current_level + 1)
+    
     while current_level <= total_levels:
         os.system("clear")
         level_name = f"ctf{current_level}"
