@@ -18,7 +18,7 @@ MAGENTA = "\033[35m"
 BOLD = "\033[1m"
 
 total_levels = 10
-user_file_path = os.path.expanduser("~/.ctf_user")
+user_file_path = os.path.expanduser("~/.wlug_user")
 sem = Semaphore(2)
 levels_pulled = 0
 loading_done = False
@@ -38,7 +38,11 @@ def get_username():
     while not username:
         username = input(f"{BOLD}{MAGENTA}Enter your CTF username: {RESET}").strip()
     with open(user_file_path, "w") as f:
+        if not re.match(r"^LD\d+$", username):
+            print(f"{BOLD}{RED}Invalid username!{RESET}")
+            return get_username()
         f.write(username)
+
     print(f"{BOLD}{YELLOW}Your username is set to {username}.{RESET}")
     return username
 
@@ -97,11 +101,11 @@ def check_and_get_docker():
     os_type = get_os()
     install_status = -1
     if os_type in ["Ubuntu", "Debian"]:
-        install_status = subprocess.call("apt update && apt install -y docker.io curl", shell=True)
+        install_status = subprocess.call("sudo apt update && sudo apt install -y docker.io curl", shell=True)
     elif os_type in ["CentOS", "RHEL"]:
-        install_status = subprocess.call("yum install -y docker curl", shell=True)
+        install_status = subprocess.call("sudo yum install -y docker curl", shell=True)
     elif os_type == "Fedora":
-        install_status = subprocess.call("dnf install -y docker curl", shell=True)
+        install_status = subprocess.call("sudo dnf install -y docker curl", shell=True)
     else:
         print("Unsupported OS. Please install Docker manually.")
         return False
@@ -283,14 +287,14 @@ def interactive_level_shell(level_name, level_num, user_id):
         if exit_code != 0:
             print("Failed to start container. Exiting...")
             return False
-    print_section_header(f"Welcome {user_id}, to CTF Level {level_num}")
+    print_section_header(f"Welcome {user_id}, to Wargames Level {level_num}")
     print(f"{GREEN}{BOLD}Submit the flag using 'submit FLAG{{...}}' below.{RESET}")
     print(f"{GREEN}{BOLD}Type 'play' to open your Docker shell. Type 'exit' to quit this level session.{RESET}")
     # print(f"{YELLOW}{BOLD}Type 'delete' to delete your CTF account and exit permanently.{RESET}")
 
     while True:
         try:
-            user_input = input(f"{BOLD}{MAGENTA}ctf-{level_num}>{RESET} ").strip()
+            user_input = input(f"{BOLD}{MAGENTA}level-{level_num}>{RESET} ").strip()
         except EOFError:
             break
         if user_input.lower().startswith("submit "):
@@ -310,20 +314,11 @@ def interactive_level_shell(level_name, level_num, user_id):
         elif user_input.lower() == "play":
             attach_command = f"docker start {level_name} > ./log.txt && docker exec -it {level_name} sh"
             os.system(attach_command)
-        elif user_input.lower() == "restart":
-            if reset_user(user_id):
-                subprocess.call(f"docker rm -f {level_name} > /dev/null 2>&1", shell=True)
-                return 1  # Restart from level 1
-        elif user_input.lower() == "delete":
-            if delete_user(user_id):
-                sys.exit(0)
-            else:
-                print(f"{RED}Failed to delete user. Try again or contact support.{RESET}")
         elif user_input.lower() == "exit":
             print("Exiting current level session.")
             return level_num
         else:
-            print("Unknown command. Use 'submit FLAG{{...}}', 'attach', 'restart', 'delete', or 'exit'.")
+            print("Unknown command. Use 'submit FLAG{...}', 'play', or 'exit'.")
 
 def main():
     global total_levels
